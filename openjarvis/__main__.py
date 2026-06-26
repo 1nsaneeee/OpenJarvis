@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 
 import click
@@ -19,10 +20,8 @@ def main(config: str) -> None:
         console.print(f"[yellow]Config not found at {config}, using defaults.[/yellow]")
         console.print("[dim]Tip: cp config/config.example.yaml config/config.yaml[/dim]")
 
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(_run(config if cfg_path.exists() else None))
-    except KeyboardInterrupt:
-        console.print("\n[green]Goodbye.[/green]")
 
 
 async def _run(config_path: str | None) -> None:
@@ -51,7 +50,12 @@ async def _run(config_path: str | None) -> None:
 
     # Event bus
     bus = BusClient(cfg.redis_url)
-    await bus.connect()
+    try:
+        await bus.connect()
+    except Exception as exc:
+        console.print(f"[red]Failed to connect to Redis at {cfg.redis_url}: {exc}[/red]")
+        console.print("[dim]Is Redis running? Try: redis-server --port 6379[/dim]")
+        return
 
     # Tools
     registry = ToolRegistry()
@@ -92,8 +96,14 @@ async def _run(config_path: str | None) -> None:
     console.print(f"  Say [bold]'{model_display}'[/bold] to wake me up.")
     console.print("  Press [bold]Ctrl+C[/bold] to quit.\n")
 
-    # Run until interrupted (cross-platform: KeyboardInterrupt cancels asyncio.run)
-    await asyncio.Event().wait()
+    # Block until interrupted (cross-platform: KeyboardInterrupt cancels asyncio.run)
+    try:
+        await asyncio.Event().wait()
+    finally:
+        console.print("\n[yellow]Shutting down...[/yellow]")
+        await capture.stop()
+        await bus.close()
+        console.print("[green]Goodbye.[/green]")
 
 
 if __name__ == "__main__":
