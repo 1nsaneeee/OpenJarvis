@@ -18,5 +18,5 @@ class ToolExecutor:
             return True, json.dumps(result)
         except KeyError:
             return False, json.dumps({"error": f"Unknown tool: {name}"})
-        except Exception as exc:  # noqa: BLE001
-            return False, json.dumps({"error": str(exc)})
+        except (TypeError, ValueError) as exc:
+            return False, json.dumps({"error": f"Invalid tool arguments: {exc}"})

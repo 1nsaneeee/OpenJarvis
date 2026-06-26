@@ -61,7 +61,8 @@ def _infer_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     """Build a minimal JSON Schema from function signature type hints."""
     hints = typing.get_type_hints(fn)
     hints.pop("return", None)
-    type_map: dict[Any, str] = {
+    sig = inspect.signature(fn)
+    type_map: dict[type, str] = {
         str: "string",
         int: "integer",
         float: "number",
@@ -70,4 +71,8 @@ def _infer_schema(fn: Callable[..., Any]) -> dict[str, Any]:
     props: dict[str, Any] = {}
     for param, hint in hints.items():
         props[param] = {"type": type_map.get(hint, "string")}
-    return {"type": "object", "properties": props, "required": list(props)}
+    required = [
+        p for p in props
+        if sig.parameters[p].default is inspect.Parameter.empty
+    ]
+    return {"type": "object", "properties": props, "required": required}
