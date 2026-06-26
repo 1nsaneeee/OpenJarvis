@@ -48,6 +48,9 @@ models/
 # OMC internal state
 .omc/
 
+# Worktrees
+.worktrees/
+
 # OS
 Thumbs.db
 desktop.ini
