@@ -12,21 +12,21 @@ from pydantic import BaseModel
 load_dotenv()
 
 
-class AudioConfig(BaseModel):
+class AudioConfig(BaseModel, frozen=True):
     sample_rate: int = 16000
     channels: int = 1
     frame_ms: int = 30
     device: int | str | None = None
 
 
-class WakeConfig(BaseModel):
+class WakeConfig(BaseModel, frozen=True):
     enabled: bool = True
     models: list[str] = ["hey_jarvis"]
     threshold: float = 0.5
     cooldown_ms: int = 1500
 
 
-class AsrConfig(BaseModel):
+class AsrConfig(BaseModel, frozen=True):
     model_size: str = "base"
     device: str = "cpu"
     compute_type: str = "int8"
@@ -34,7 +34,7 @@ class AsrConfig(BaseModel):
     vad_filter: bool = True
 
 
-class LlmConfig(BaseModel):
+class LlmConfig(BaseModel, frozen=True):
     provider: str = "anthropic"
     model: str = "claude-sonnet-4-5"
     max_tokens: int = 4096
@@ -42,7 +42,7 @@ class LlmConfig(BaseModel):
     provider_options: dict[str, Any] = {}
 
 
-class ConversationConfig(BaseModel):
+class ConversationConfig(BaseModel, frozen=True):
     silence_timeout_ms: int = 8000
     max_turn_history: int = 20
     system_prompt_file: str = "config/prompts/system.md"
@@ -60,6 +60,22 @@ class AppConfig(BaseModel, frozen=True):
 
 
 def load_config(path: str) -> AppConfig:
+    """Load configuration from a YAML file with environment variable overrides.
+
+    Args:
+        path: Path to the YAML configuration file.
+
+    Returns:
+        A frozen AppConfig instance with defaults applied and env overrides merged.
+
+    Raises:
+        FileNotFoundError: If the config file does not exist at the given path.
+
+    Env overrides (applied after YAML parse):
+        REDIS_URL           → redis_url
+        OPENJARVIS_LOG_LEVEL → log_level
+        OPENJARVIS_DATA_DIR  → data_dir
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
