@@ -1,0 +1,99 @@
+# OpenJarvis configuration
+# Copy to config.yaml and customize. Environment variables override these values.
+
+# ============================================================
+# Audio capture
+# ============================================================
+audio:
+  sample_rate: 16000
+  channels: 1
+  frame_ms: 30        # frame size for VAD / wake detection
+  device: null        # null = system default input device
+
+# ============================================================
+# Wake-word detection (openWakeWord)
+# ============================================================
+wake:
+  enabled: true
+  models:
+    - "hey_jarvis"    # bundled model name
+  threshold: 0.5
+  cooldown_ms: 1500   # ignore re-trigger within this window
+
+# ============================================================
+# ASR (faster-whisper)
+# ============================================================
+asr:
+  model_size: "base"    # tiny / base / small / medium / large-v3
+  device: "cpu"         # "cpu" or "cuda"
+  compute_type: "int8"  # int8 / float16 / float32
+  language: null        # null = auto-detect; or "zh", "en", ...
+  vad_filter: true
+
+# ============================================================
+# LLM provider — pluggable
+# ============================================================
+llm:
+  provider: "anthropic"   # anthropic | openai | gemini | ollama
+  model: "claude-sonnet-4-5"
+  max_tokens: 4096
+  temperature: 0.7
+  # Provider-specific overrides:
+  # provider_options:
+  #   base_url: "https://api.anthropic.com"
+
+# ============================================================
+# Conversation state machine
+# ============================================================
+conversation:
+  silence_timeout_ms: 8000     # back to idle after this much silence
+  max_turn_history: 20         # turns kept in context window
+  system_prompt_file: "config/prompts/system.md"
+
+# ============================================================
+# Tool execution
+# ============================================================
+tools:
+  # Built-in tools (safe by default)
+  builtin:
+    enabled:
+      - "filesystem.read"
+      - "filesystem.list"
+      - "clipboard.read"
+      - "clipboard.write"
+      - "app.open"
+      - "web.fetch"
+
+  # Shell execution (DANGEROUS — disabled by default)
+  shell:
+    enabled: false
+    allow_list: []           # if non-empty, only these commands allowed
+    deny_list:
+      - "rm -rf"
+      - "format"
+      - "del /s"
+      - "shutdown"
+    require_confirmation: true
+
+  # MCP servers (reuse Claude Code / OpenAI ecosystem)
+  mcp:
+    servers: []
+    # Example:
+    # - name: "filesystem"
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me"]
+
+# ============================================================
+# Memory (SQLite)
+# ============================================================
+memory:
+  db_path: "./data/openjarvis.db"
+  retention_days: 90
+
+# ============================================================
+# Logging
+# ============================================================
+logging:
+  level: "INFO"
+  format: "json"      # json | console
+  file: "./logs/openjarvis.log"

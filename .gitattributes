@@ -1,0 +1,13 @@
+# Normalize line endings to LF in the repo, checkout as-is on Windows
+* text=auto eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+
+# Binaries — never touch
+*.bin binary
+*.pt binary
+*.gguf binary
