@@ -1,4 +1,18 @@
-"""Pydantic event models for the OpenJarvis Redis event bus."""
+"""Pydantic event models for the OpenJarvis Redis event bus.
+
+All events extend the :class:`Envelope` base class, which provides a uniform
+wrapper with auto-generated ULID, timestamp, source, trace, and a ``type``
+discriminator field.  The ``type`` string is used by publishers / subscribers
+to route and de-serialise events without inspecting the payload.
+
+Subclassing pattern
+-------------------
+New events inherit from ``Envelope`` and set a default value for ``type``
+(e.g. ``type: str = "audio.chunk"``).  Fields specific to the event are added
+directly on the subclass.  The ``Envelope`` base is **frozen** (immutable
+after construction), so all event instances are hashable and safe to share
+across async boundaries.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +21,7 @@ from enum import StrEnum
 from typing import Any
 
 import ulid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _ulid() -> str:
@@ -16,6 +30,8 @@ def _ulid() -> str:
 
 class Envelope(BaseModel):
     """Universal outer wrapper for all bus events."""
+
+    model_config = ConfigDict(frozen=True)
 
     id: str = Field(default_factory=_ulid)
     ts: float = Field(default_factory=time.time)
@@ -143,3 +159,22 @@ class ToolConfirmEvent(Envelope):
 class ShutdownEvent(Envelope):
     type: str = "system.shutdown"
     reason: str = "user_request"
+
+
+__all__ = [
+    "AsrFinal",
+    "AsrPartial",
+    "AudioChunk",
+    "ConvState",
+    "ConvStateEvent",
+    "Envelope",
+    "LlmDeltaEvent",
+    "LlmRequest",
+    "LlmResponse",
+    "ShutdownEvent",
+    "ToolCallEvent",
+    "ToolConfirmEvent",
+    "ToolResultEvent",
+    "VadEvent",
+    "WakeEvent",
+]
