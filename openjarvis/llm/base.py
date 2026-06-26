@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ToolCall(BaseModel):
@@ -23,7 +23,7 @@ class ToolSpec(BaseModel):
 class Message(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
     content: str | None = None
-    tool_calls: list[ToolCall] = []
+    tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None   # set when role=="tool"
     name: str | None = None           # tool name for role=="tool"
 
@@ -59,3 +59,6 @@ class BaseProvider(ABC):
     async def health_check(self) -> bool:
         """Return True if the provider is reachable."""
         ...
+
+
+__all__ = ["BaseProvider", "LlmDelta", "Message", "ProviderError", "ToolCall", "ToolSpec"]

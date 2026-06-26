@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Literal
 
 import anthropic
 
@@ -17,7 +17,7 @@ from openjarvis.llm.base import (
 )
 
 # Map Anthropic stop_reason → our LlmDelta.finish_reason Literal
-_STOP_REASON_MAP: dict[str, str] = {
+_STOP_REASON_MAP: dict[str, Literal["stop", "tool_use", "length"]] = {
     "end_turn": "stop",
     "stop_sequence": "stop",
     "max_tokens": "length",
@@ -39,7 +39,7 @@ class AnthropicProvider(BaseProvider):
         try:
             await self._client.models.list()
             return True
-        except Exception:
+        except anthropic.AnthropicError:
             return False
 
     def chat(
@@ -119,7 +119,7 @@ class AnthropicProvider(BaseProvider):
 
         for block in response.content:
             if block.type == "text":
-                full_text = block.text
+                full_text += block.text
             elif block.type == "tool_use":
                 pending_tool_calls.append(
                     ToolCall(id=block.id, name=block.name, arguments=block.input)
@@ -134,4 +134,4 @@ class AnthropicProvider(BaseProvider):
         if not pending_tool_calls:
             raw_reason = response.stop_reason or "end_turn"
             mapped = _STOP_REASON_MAP.get(raw_reason, "stop")
-            yield LlmDelta(finish_reason=mapped)  # type: ignore[arg-type]
+            yield LlmDelta(finish_reason=mapped)
