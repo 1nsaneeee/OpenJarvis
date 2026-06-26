@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Coroutine
+from contextlib import suppress
 from typing import Any, TypeVar
 
 import redis.asyncio as aioredis
@@ -23,6 +24,8 @@ class BusClient:
         self._listener_task: asyncio.Task[None] | None = None
 
     async def connect(self) -> None:
+        # protocol=2 forces RESP2 for compatibility with Redis 5.0
+        # (redis-py 8.x defaults to RESP3 HELLO which Redis 5.0 rejects).
         self._redis = await aioredis.from_url(
             self._url, decode_responses=True, protocol=2
         )
@@ -31,6 +34,8 @@ class BusClient:
     async def close(self) -> None:
         if self._listener_task:
             self._listener_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._listener_task
         if self._pubsub:
             await self._pubsub.aclose()
         if self._redis:
@@ -79,7 +84,7 @@ class BusClient:
 
     async def xadd(self, stream: str, event: Envelope) -> None:
         assert self._redis is not None
-        data = json.loads(event.model_dump_json())
+        data = event.model_dump(mode="json")
         # Redis stream fields must be str → str
         flat = {k: json.dumps(v) if not isinstance(v, str) else v for k, v in data.items()}
         await self._redis.xadd(stream, flat)

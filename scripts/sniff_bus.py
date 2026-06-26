@@ -6,6 +6,8 @@ import redis.asyncio as aioredis
 
 
 async def sniff(url: str = "redis://localhost:6379/0") -> None:
+    # protocol=2 forces RESP2 for compatibility with Redis 5.0
+    # (redis-py 8.x defaults to RESP3 HELLO which Redis 5.0 rejects).
     r = await aioredis.from_url(url, decode_responses=True, protocol=2)
     ps = r.pubsub()
     await ps.psubscribe("jarvis:*")
