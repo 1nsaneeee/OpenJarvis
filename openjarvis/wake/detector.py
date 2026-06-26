@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from collections.abc import Callable, Coroutine
-from typing import Any
 
 import numpy as np
 from openwakeword.model import Model  # type: ignore[import-untyped]
@@ -12,8 +10,6 @@ from openwakeword.model import Model  # type: ignore[import-untyped]
 from openjarvis.bus.client import BusClient
 from openjarvis.bus.schemas import AudioChunk, WakeEvent
 from openjarvis.system.config import WakeConfig
-
-WakeCallback = Callable[[WakeEvent], Coroutine[Any, Any, None]]
 
 
 class WakeDetector:

@@ -8,10 +8,13 @@ from typing import Any
 
 import numpy as np
 import sounddevice as sd
+import structlog
 
 from openjarvis.bus.client import BusClient
 from openjarvis.bus.schemas import AudioChunk
 from openjarvis.system.config import AudioConfig
+
+_logger = structlog.get_logger(__name__)
 
 
 class AudioCapture:
@@ -37,6 +40,8 @@ class AudioCapture:
             self._queue.put_nowait(pcm)  # drop frame rather than block
 
     async def start(self) -> None:
+        if self._stream is not None:
+            raise RuntimeError("AudioCapture is already started")
         cfg = self._config
         self._stream = sd.InputStream(
             samplerate=cfg.sample_rate,
@@ -53,21 +58,28 @@ class AudioCapture:
         if self._stream:
             self._stream.stop()
             self._stream.close()
+            self._stream = None
         if self._publish_task:
             self._publish_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._publish_task
+            self._publish_task = None
 
     async def _publish_loop(self) -> None:
         cfg = self._config
         while True:
             pcm = await self._queue.get()
-            chunk = AudioChunk(
-                source="audio",
-                trace_id=self._trace_id,
-                pcm_b64=base64.b64encode(pcm).decode(),
-                sample_rate=cfg.sample_rate,
-                channels=cfg.channels,
-                frame_ms=cfg.frame_ms,
-            )
-            await self._bus.publish("jarvis:audio:chunk", chunk)
+            try:
+                chunk = AudioChunk(
+                    source="audio",
+                    trace_id=self._trace_id,
+                    pcm_b64=base64.b64encode(pcm).decode(),
+                    sample_rate=cfg.sample_rate,
+                    channels=cfg.channels,
+                    frame_ms=cfg.frame_ms,
+                )
+                await self._bus.publish("jarvis:audio:chunk", chunk)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning("audio_publish_error", error=str(exc))

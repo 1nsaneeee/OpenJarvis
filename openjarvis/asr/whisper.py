@@ -1,7 +1,9 @@
 """ASR: buffer PCM after wake event, transcribe with faster-whisper."""
 from __future__ import annotations
 
+import asyncio
 import base64
+from typing import Any
 
 import numpy as np
 from faster_whisper import WhisperModel  # type: ignore[import-untyped]
@@ -9,9 +11,6 @@ from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 from openjarvis.bus.client import BusClient
 from openjarvis.bus.schemas import AsrFinal, AudioChunk, WakeEvent
 from openjarvis.system.config import AsrConfig, WakeConfig
-
-SILENCE_FRAMES = 40   # ~1.2 s of silence ends the utterance
-SILENCE_ENERGY_THRESHOLD = 200  # tune per mic
 
 
 class WhisperASR:
@@ -53,12 +52,12 @@ class WhisperASR:
         # Simple energy-based VAD for end-of-speech
         audio = np.frombuffer(pcm, dtype=np.int16)
         energy = float(np.abs(audio).mean())
-        if energy < SILENCE_ENERGY_THRESHOLD:
+        if energy < self._config.silence_energy_threshold:
             self._silence_counter += 1
         else:
             self._silence_counter = 0
 
-        if self._silence_counter >= SILENCE_FRAMES:
+        if self._silence_counter >= self._config.silence_frames:
             self._listening = False
             await self._transcribe(self._current_trace)
 
@@ -67,14 +66,18 @@ class WhisperASR:
             return
         raw = b"".join(self._buffer)
         audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-        duration_s = len(audio) / 16000.0
+        duration_s = len(audio) / float(self._config.sample_rate)
 
-        segments, info = self._model.transcribe(
-            audio,
-            language=self._config.language,
-            vad_filter=self._config.vad_filter,
-        )
-        text = " ".join(s.text for s in segments).strip()
+        def _do_transcribe() -> tuple[str, Any]:
+            segments, info = self._model.transcribe(
+                audio,
+                language=self._config.language,
+                vad_filter=self._config.vad_filter,
+            )
+            joined = " ".join(s.text for s in segments).strip()
+            return joined, info
+
+        text, info = await asyncio.to_thread(_do_transcribe)
         if not text:
             return
 

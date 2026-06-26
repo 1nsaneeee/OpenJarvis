@@ -32,6 +32,9 @@ class AsrConfig(BaseModel, frozen=True):
     compute_type: str = "int8"
     language: str | None = None
     vad_filter: bool = True
+    sample_rate: int = 16000
+    silence_frames: int = 40
+    silence_energy_threshold: int = 200
 
 
 class LlmConfig(BaseModel, frozen=True):
