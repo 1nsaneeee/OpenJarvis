@@ -5,11 +5,15 @@ import asyncio
 import json
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
+from enum import StrEnum
 from typing import Any, TypeVar
 
 import redis.asyncio as aioredis
+import structlog
 
 from openjarvis.bus.schemas import Envelope
+
+_logger = structlog.get_logger(__name__)
 
 T = TypeVar("T", bound=Envelope)
 Handler = Callable[[Any], Coroutine[Any, Any, None]]
@@ -78,7 +82,7 @@ class BusClient:
                 await handler(event)
             except Exception as exc:  # noqa: BLE001
                 # Never crash the listener on a bad message
-                print(f"[BusClient] Error handling {channel}: {exc}")
+                _logger.warning("bus_message_error", channel=channel, error=str(exc))
 
     # ── Streams ──────────────────────────────────────────────────────────
 
@@ -101,7 +105,7 @@ class BusClient:
             return []
         entries = []
         for _stream, messages in results:
-            for _msg_id, fields in messages:
+            for _msg_id, fields in messages:  # msg_id cursor discarded; use last_id param to resume
                 decoded = {}
                 for k, v in fields.items():
                     try:
@@ -113,9 +117,17 @@ class BusClient:
 
     # ── Key-value state ──────────────────────────────────────────────────
 
-    async def set_state(self, key: str, value: Any) -> None:
+    async def set_state(self, key: str, value: str | StrEnum) -> None:
         assert self._redis is not None
-        await self._redis.set(key, value if isinstance(value, str) else value.value)
+        if isinstance(value, str):
+            str_value = value
+        elif isinstance(value, StrEnum):
+            str_value = value.value
+        else:
+            raise TypeError(
+                f"set_state value must be str or StrEnum, got {type(value).__name__}"
+            )
+        await self._redis.set(key, str_value)
 
     async def get_state(self, key: str, model: type[T] | None = None) -> Any:
         assert self._redis is not None
