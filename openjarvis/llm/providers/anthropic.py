@@ -16,6 +16,16 @@ from openjarvis.llm.base import (
     ToolSpec,
 )
 
+# Map Anthropic stop_reason → our LlmDelta.finish_reason Literal
+_STOP_REASON_MAP: dict[str, str] = {
+    "end_turn": "stop",
+    "stop_sequence": "stop",
+    "max_tokens": "length",
+    "tool_use": "tool_use",
+    "pause_turn": "stop",
+    "refusal": "stop",
+}
+
 
 class AnthropicProvider(BaseProvider):
     name = "anthropic"
@@ -122,4 +132,6 @@ class AnthropicProvider(BaseProvider):
             yield LlmDelta(tool_call=tc, finish_reason="tool_use")
 
         if not pending_tool_calls:
-            yield LlmDelta(finish_reason=response.stop_reason or "stop")
+            raw_reason = response.stop_reason or "end_turn"
+            mapped = _STOP_REASON_MAP.get(raw_reason, "stop")
+            yield LlmDelta(finish_reason=mapped)  # type: ignore[arg-type]

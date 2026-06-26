@@ -44,3 +44,12 @@ def test_llm_delta_tool_call():
     d = LlmDelta(tool_call=tc, finish_reason="tool_use")
     assert d.tool_call is not None
     assert d.finish_reason == "tool_use"
+
+
+def test_llm_delta_finish_reason_values():
+    """LlmDelta.finish_reason only accepts our mapped Literal values."""
+    for valid in ("stop", "tool_use", "length"):
+        d = LlmDelta(finish_reason=valid)  # type: ignore[arg-type]
+        assert d.finish_reason == valid
+    with pytest.raises(ValidationError):
+        LlmDelta(finish_reason="end_turn")  # type: ignore[arg-type]
