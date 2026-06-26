@@ -7,6 +7,8 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
+import structlog
+
 from openjarvis.bus.client import BusClient
 from openjarvis.bus.schemas import (
     AsrFinal,
@@ -14,8 +16,10 @@ from openjarvis.bus.schemas import (
     ConvStateEvent,
     WakeEvent,
 )
-from openjarvis.llm.base import BaseProvider, Message, ToolCall, ToolSpec
+from openjarvis.llm.base import BaseProvider, Message, ProviderError, ToolCall, ToolSpec
 from openjarvis.tools.executor import ToolExecutor
+
+_logger = structlog.get_logger(__name__)
 
 
 class State(StrEnum):
@@ -35,6 +39,7 @@ class ConversationManager:
         *,
         model: str,
         max_history: int = 20,
+        max_tool_rounds: int = 5,
         system_prompt_file: str = "config/prompts/system.md",
         tools: list[ToolSpec] | None = None,
     ) -> None:
@@ -43,6 +48,7 @@ class ConversationManager:
         self._executor = executor
         self._model = model
         self._max_history = max_history
+        self._max_tool_rounds = max_tool_rounds
         self._tools = tools or []
         self._state = State.IDLE
         self._trace_id = ""
@@ -76,6 +82,10 @@ class ConversationManager:
         await self._bus.publish("jarvis:conv:state", ev)
         await self._bus.set_state("jarvis:conv:state", ConvState(new_state.value))
 
+    def _trim_history(self) -> None:
+        if len(self._history) > self._max_history:
+            self._history = self._history[-self._max_history:]
+
     async def _on_wake(self, event: WakeEvent) -> None:
         if self._state != State.IDLE:
             return
@@ -88,37 +98,55 @@ class ConversationManager:
             return
         print(f"[You] {event.text}")
         self._history.append(Message(role="user", content=event.text))
-        if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+        self._trim_history()
         await self._think()
 
-    async def _think(self) -> None:
+    async def _think(self, _tool_round: int = 0) -> None:
+        if _tool_round > self._max_tool_rounds:
+            await self._set_state(State.RESPONDING)
+            print("\n[Jarvis] I had trouble completing that with tools. Please try again.\n")
+            await self._set_state(State.IDLE)
+            return
+
         await self._set_state(State.THINKING)
         messages = [Message(role="system", content=self._system_prompt)] + self._history
 
         full_text = ""
         pending_calls: list[ToolCall] = []
 
-        async for delta in self._provider.chat(
-            messages,
-            tools=self._tools or None,
-            model=self._model,
-        ):
-            if delta.text:
-                full_text += delta.text
-            if delta.tool_call:
-                pending_calls.append(delta.tool_call)
+        try:
+            async for delta in self._provider.chat(
+                messages,
+                tools=self._tools or None,
+                model=self._model,
+            ):
+                if delta.text:
+                    full_text += delta.text
+                if delta.tool_call:
+                    pending_calls.append(delta.tool_call)
+        except ProviderError as exc:
+            _logger.warning("llm_provider_error", error=str(exc))
+            print(f"\n[Jarvis] LLM error: {exc}. Returning to idle.\n")
+            await self._set_state(State.IDLE)
+            return
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("conversation_unexpected_error", error=str(exc))
+            print("\n[Jarvis] Something went wrong. Returning to idle.\n")
+            await self._set_state(State.IDLE)
+            return
 
         if pending_calls:
             self._history.append(
                 Message(role="assistant", content=None, tool_calls=pending_calls)
             )
-            await self._execute_tools(pending_calls)
+            self._trim_history()
+            await self._execute_tools(pending_calls, _tool_round + 1)
         else:
             self._history.append(Message(role="assistant", content=full_text))
+            self._trim_history()
             await self._respond(full_text)
 
-    async def _execute_tools(self, calls: list[ToolCall]) -> None:
+    async def _execute_tools(self, calls: list[ToolCall], tool_round: int) -> None:
         await self._set_state(State.EXECUTING)
         for tc in calls:
             _, result_json = await self._executor.execute(tc.name, tc.arguments)
@@ -130,7 +158,8 @@ class ConversationManager:
                     name=tc.name,
                 )
             )
-        await self._think()
+            self._trim_history()
+        await self._think(_tool_round=tool_round)
 
     async def _respond(self, text: str) -> None:
         await self._set_state(State.RESPONDING)

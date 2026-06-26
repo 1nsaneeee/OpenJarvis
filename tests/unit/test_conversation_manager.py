@@ -146,3 +146,56 @@ def test_state_enum_values() -> None:
     assert State.THINKING.value == "thinking"
     assert State.EXECUTING.value == "executing"
     assert State.RESPONDING.value == "responding"
+
+
+@pytest.mark.asyncio
+async def test_tool_round_limit(
+    mock_bus: AsyncMock, mock_executor: AsyncMock
+) -> None:
+    """Manager bails out gracefully when tool calls exceed max_tool_rounds."""
+    from openjarvis.llm.base import ToolCall
+
+    provider = AsyncMock()
+
+    async def always_tool_call(*_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+        yield LlmDelta(
+            tool_call=ToolCall(id="tc1", name="get_time", arguments={}),
+            finish_reason="tool_use",
+        )
+
+    provider.chat = always_tool_call
+
+    mgr = ConversationManager(
+        mock_bus, provider, mock_executor, model="test-model", max_tool_rounds=2
+    )
+    mgr._state = State.LISTENING
+    mgr._trace_id = "t1"
+    asr_ev = AsrFinal(source="asr", trace_id="t1", text="loop forever please")
+    await mgr._on_asr_final(asr_ev)
+
+    # Should have bailed out and returned to IDLE
+    assert mgr.state == State.IDLE
+
+
+@pytest.mark.asyncio
+async def test_provider_error_returns_to_idle(
+    mock_bus: AsyncMock, mock_executor: AsyncMock
+) -> None:
+    """When provider raises ProviderError, manager recovers to IDLE."""
+    from openjarvis.llm.base import ProviderError
+
+    provider = AsyncMock()
+
+    async def failing_chat(*_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+        raise ProviderError("simulated API failure")
+        yield  # unreachable; needed to make this an async generator
+
+    provider.chat = failing_chat
+
+    mgr = ConversationManager(mock_bus, provider, mock_executor, model="test-model")
+    mgr._state = State.LISTENING
+    mgr._trace_id = "t1"
+    asr_ev = AsrFinal(source="asr", trace_id="t1", text="break the api")
+    await mgr._on_asr_final(asr_ev)
+
+    assert mgr.state == State.IDLE
