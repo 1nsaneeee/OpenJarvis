@@ -60,9 +60,9 @@ dev = [
 openjarvis = "openjarvis.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/OpenJarvis"
-Repository = "https://github.com/YOUR_USERNAME/OpenJarvis"
-Issues = "https://github.com/YOUR_USERNAME/OpenJarvis/issues"
+Homepage = "https://github.com/1nsaneeee/OpenJarvis"
+Repository = "https://github.com/1nsaneeee/OpenJarvis"
+Issues = "https://github.com/1nsaneeee/OpenJarvis/issues"
 
 [tool.ruff]
 line-length = 100
